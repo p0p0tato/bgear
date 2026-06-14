@@ -1,21 +1,25 @@
 "use client";
 
-import { useState } from "react";
+import { Suspense, useCallback, useEffect, useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { Check, Copy, Download, RefreshCw, Shuffle } from "lucide-react";
 
 const STYLES = ["gradient", "dots", "geo", "lines", "topographic", "blob", "noise", "plain"];
 const PALETTES = ["warm", "cool", "earth", "mono", "neon", "pastel", "dark"];
+
+const PALETTE_COLORS: Record<string, string[]> = {
+  warm: ["#7c2d12", "#c2410c", "#ea580c", "#fb923c", "#fde68a"],
+  cool: ["#1e3a5f", "#1d4ed8", "#3b82f6", "#7dd3fc", "#e0f2fe"],
+  earth: ["#1c1917", "#57534e", "#78716c", "#a8a29e", "#d6d3d1"],
+  mono: ["#000000", "#404040", "#737373", "#d4d4d4", "#ffffff"],
+  neon: ["#0f0f0f", "#7c3aed", "#06b6d4", "#10b981", "#f0abfc"],
+  pastel: ["#fce7f3", "#fbcfe8", "#ddd6fe", "#bfdbfe", "#d1fae5"],
+  dark: ["#0a0a0a", "#134e4a", "#0f766e", "#a16207", "#d4a76a"],
+};
 
 const STYLE_DESCRIPTIONS: Record<string, string> = {
   gradient: "Smooth color transitions, linear or radial",
@@ -96,26 +100,73 @@ const SOCIAL_PROOF_ITEMS = [
   "Edge-ready",
 ];
 
+const EMBED_EXAMPLES = [
+  {
+    key: "html",
+    label: "HTML Image Tag:",
+    code: '<img src="https://fondor.dev/api/v1/geo/hello-world?palette=cool&w=1200&h=630" alt="Backdrop" />',
+  },
+  {
+    key: "markdown",
+    label: "Markdown:",
+    code: "![Backdrop](https://fondor.dev/api/v1/dots/banner?palette=pastel&w=1500&h=500)",
+  },
+  {
+    key: "css",
+    label: "CSS background-image:",
+    code: "background-image: url('https://fondor.dev/api/v1/blob/my-project?palette=dark&w=1920&h=1080');",
+  },
+];
+
 const createLocalPreviewUrl = (s: string, p: string, sd: string, w: number, h: number) =>
   `/api/v1/${s}/${sd || "default"}?palette=${p}&w=${w}&h=${h}`;
 
 const createPublicPreviewUrl = (s: string, p: string, sd: string, w: number, h: number) =>
   `https://fondor.dev/api/v1/${s}/${sd || "default"}?palette=${p}&w=${w}&h=${h}`;
 
-export default function Home() {
-  const [style, setStyle] = useState("geo");
-  const [palette, setPalette] = useState("warm");
-  const [seed, setSeed] = useState("fondor");
-  const [width, setWidth] = useState(1500);
-  const [height, setHeight] = useState(500);
+const copyText = async (text: string) => {
+  if (navigator.clipboard) {
+    try {
+      await navigator.clipboard.writeText(text);
+      return;
+    } catch {
+      // Fall back for browsers or test environments that expose clipboard but deny access.
+    }
+  }
+
+  const textArea = document.createElement("textarea");
+  textArea.value = text;
+  textArea.setAttribute("readonly", "");
+  textArea.style.position = "fixed";
+  textArea.style.opacity = "0";
+  document.body.appendChild(textArea);
+  textArea.select();
+  document.execCommand("copy");
+  textArea.remove();
+};
+
+function HomeContent() {
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const initialStyle = searchParams.get("style") || "geo";
+  const initialPalette = searchParams.get("palette") || "warm";
+  const initialSeed = searchParams.get("seed") || "fondor";
+  const initialWidth = Number(searchParams.get("w")) || 1500;
+  const initialHeight = Number(searchParams.get("h")) || 500;
+  const [style, setStyle] = useState(initialStyle);
+  const [palette, setPalette] = useState(initialPalette);
+  const [seed, setSeed] = useState(initialSeed);
+  const [width, setWidth] = useState(initialWidth);
+  const [height, setHeight] = useState(initialHeight);
   const [activeSettings, setActiveSettings] = useState({
-    style: "geo",
-    palette: "warm",
-    seed: "fondor",
-    width: 1500,
-    height: 500,
+    style: initialStyle,
+    palette: initialPalette,
+    seed: initialSeed,
+    width: initialWidth,
+    height: initialHeight,
   });
   const [isCopied, setIsCopied] = useState(false);
+  const [copiedEmbed, setCopiedEmbed] = useState<string | null>(null);
   const [isDownloading, setIsDownloading] = useState(false);
 
   const localPreviewUrl = createLocalPreviewUrl(
@@ -135,23 +186,57 @@ export default function Home() {
   const previewRatio = activeSettings.width / activeSettings.height;
   const previewMaxHeight = 500;
 
-  const applySettings = (nextSeed = seed) => {
-    setActiveSettings({ style, palette, seed: nextSeed, width, height });
-  };
+  const handleGenerate = useCallback(
+    (nextSeed = seed) => {
+      const nextSettings = { style, palette, seed: nextSeed, width, height };
+      setActiveSettings(nextSettings);
+      const params = new URLSearchParams({
+        style,
+        palette,
+        seed: nextSeed,
+        w: String(width),
+        h: String(height),
+      });
+      router.replace(`?${params.toString()}`, { scroll: false });
+    },
+    [style, palette, seed, width, height, router]
+  );
 
   const handleShuffle = () => {
     const newSeed = Math.random().toString(36).substring(7);
     setSeed(newSeed);
-    applySettings(newSeed);
+    handleGenerate(newSeed);
   };
+
+  useEffect(() => {
+    const handler = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key === "Enter") {
+        event.preventDefault();
+        handleGenerate();
+      }
+    };
+
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [handleGenerate]);
 
   const copyToClipboard = async (text: string) => {
     try {
-      await navigator.clipboard.writeText(text);
+      await copyText(text);
       setIsCopied(true);
       setTimeout(() => setIsCopied(false), 2000);
     } catch (err) {
       console.error("Failed to copy", err);
+    }
+  };
+
+  const copyEmbed = async (text: string, key: string) => {
+    try {
+      await copyText(text);
+      setCopiedEmbed(key);
+      setTimeout(() => setCopiedEmbed(null), 2000);
+    } catch (err) {
+      console.error("Failed to copy embed", err);
     }
   };
 
@@ -278,37 +363,67 @@ export default function Home() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-[1.25fr_1fr_1fr_auto] gap-4">
                 <div className="space-y-2">
                   <label className="text-sm font-medium text-neutral-300">Style</label>
-                  <Select value={style} onValueChange={setStyle}>
-                    <SelectTrigger className="bg-neutral-950 border-neutral-800">
-                      <SelectValue placeholder="Select style" />
-                    </SelectTrigger>
-                    <SelectContent className="bg-neutral-900 border-neutral-800 text-white">
-                      {STYLES.map((s) => (
-                        <SelectItem key={s} value={s}>
+                  <div className="grid grid-cols-4 gap-1.5">
+                    {STYLES.map((s) => (
+                      <button
+                        key={s}
+                        type="button"
+                        onClick={() => setStyle(s)}
+                        className={`relative overflow-hidden rounded-md border transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white ${
+                          style === s
+                            ? "border-white ring-1 ring-white"
+                            : "border-neutral-800 hover:border-neutral-600"
+                        }`}
+                        title={s}
+                        aria-pressed={style === s}
+                      >
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={`/api/v1/${s}/preview-thumb?palette=${palette}&w=120&h=80`}
+                          alt={s}
+                          className="w-full aspect-[3/2] object-cover"
+                          loading="lazy"
+                        />
+                        <span className="absolute bottom-0 inset-x-0 bg-black/60 py-0.5 text-center font-mono text-[9px] text-neutral-300">
                           {s}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                        </span>
+                      </button>
+                    ))}
+                  </div>
                 </div>
 
                 <div className="space-y-2">
                   <label className="text-sm font-medium text-neutral-300">Palette</label>
-                  <Select value={palette} onValueChange={setPalette}>
-                    <SelectTrigger className="bg-neutral-950 border-neutral-800">
-                      <SelectValue placeholder="Select palette" />
-                    </SelectTrigger>
-                    <SelectContent className="bg-neutral-900 border-neutral-800 text-white">
-                      {PALETTES.map((p) => (
-                        <SelectItem key={p} value={p}>
-                          {p}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
+                  <div className="grid grid-cols-1 gap-1.5">
+                    {PALETTES.map((p) => (
+                      <button
+                        key={p}
+                        type="button"
+                        onClick={() => setPalette(p)}
+                        className={`flex items-center gap-3 rounded-md border px-3 py-2 text-left transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white ${
+                          palette === p
+                            ? "border-white bg-neutral-800"
+                            : "border-neutral-800 hover:border-neutral-600 hover:bg-neutral-900"
+                        }`}
+                        aria-pressed={palette === p}
+                      >
+                        <div className="flex gap-0.5 shrink-0">
+                          {(PALETTE_COLORS[p] || []).map((color) => (
+                            <span
+                              key={color}
+                              className="h-3 w-3 rounded-sm"
+                              style={{ backgroundColor: color }}
+                              aria-hidden="true"
+                            />
+                          ))}
+                        </div>
+                        <span className="font-mono text-sm text-neutral-300">{p}</span>
+                      </button>
+                    ))}
+                  </div>
                 </div>
 
                 <div className="space-y-2">
@@ -331,10 +446,13 @@ export default function Home() {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-2 lg:pt-7">
-                  <Button onClick={() => applySettings()} className="w-full bg-white text-black hover:bg-neutral-200">
+                <div className="flex flex-col gap-2 lg:pt-7">
+                  <Button onClick={() => handleGenerate()} className="w-full bg-white text-black hover:bg-neutral-200">
                     <RefreshCw className="w-4 h-4 mr-2" />
                     Generate
+                    <kbd className="ml-auto hidden rounded bg-neutral-200 px-1.5 py-0.5 font-mono text-[10px] text-neutral-500 lg:inline">
+                      ⌘↵
+                    </kbd>
                   </Button>
                   <Button
                     variant="outline"
@@ -343,7 +461,7 @@ export default function Home() {
                     className="w-full bg-neutral-950 border-neutral-800 hover:bg-neutral-800 hover:text-white"
                   >
                     <Download className="w-4 h-4 mr-2" />
-                    SVG
+                    Download SVG
                   </Button>
                 </div>
               </div>
@@ -394,7 +512,7 @@ export default function Home() {
                 </div>
                 <Button
                   variant="outline"
-                  onClick={() => applySettings()}
+                  onClick={() => handleGenerate()}
                   className="bg-neutral-950 border-neutral-800 hover:bg-neutral-800 hover:text-white"
                 >
                   Apply
@@ -407,12 +525,35 @@ export default function Home() {
                   <code className="flex-1 px-4 py-2 bg-neutral-950 border border-neutral-800 rounded-md text-sm text-neutral-300 overflow-x-auto whitespace-nowrap">
                     {publicPreviewUrl}
                   </code>
+                  <a
+                    href={publicPreviewUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="shrink-0 text-xs text-neutral-500 hover:text-neutral-300 transition-colors flex items-center gap-1 px-2"
+                  >
+                    <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" aria-hidden="true">
+                      <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+                      <polyline points="15 3 21 3 21 9" />
+                      <line x1="10" y1="14" x2="21" y2="3" />
+                    </svg>
+                    Raw
+                  </a>
                   <Button
                     variant="outline"
                     onClick={() => copyToClipboard(publicPreviewUrl)}
-                    className="bg-neutral-950 border-neutral-800 hover:bg-neutral-800 hover:text-white shrink-0"
+                    className="bg-neutral-950 border-neutral-800 hover:bg-neutral-800 hover:text-white shrink-0 min-w-[90px] transition-all"
                   >
-                    {isCopied ? <Check className="w-4 h-4 text-green-500" /> : <Copy className="w-4 h-4" />}
+                    {isCopied ? (
+                      <>
+                        <Check className="w-4 h-4 mr-1.5 text-green-500" />
+                        <span className="text-green-500 text-xs">Copied!</span>
+                      </>
+                    ) : (
+                      <>
+                        <Copy className="w-4 h-4 mr-1.5" />
+                        <span className="text-xs">Copy</span>
+                      </>
+                    )}
                   </Button>
                 </div>
               </div>
@@ -490,24 +631,34 @@ export default function Home() {
               <div className="space-y-4">
                 <h3 className="text-lg font-medium text-white">Embed Examples</h3>
                 <div className="space-y-4 text-sm mt-4">
-                  <div>
-                    <span className="text-neutral-400 mb-2 block">HTML Image Tag:</span>
-                    <code className="block p-4 bg-neutral-950 border border-neutral-800 rounded-lg text-emerald-400 font-mono overflow-x-auto">
-                      {'<img src="https://fondor.dev/api/v1/geo/hello-world?palette=cool&w=1200&h=630" alt="Backdrop" />'}
-                    </code>
-                  </div>
-                  <div>
-                    <span className="text-neutral-400 mb-2 block">Markdown:</span>
-                    <code className="block p-4 bg-neutral-950 border border-neutral-800 rounded-lg text-emerald-400 font-mono overflow-x-auto">
-                      ![Backdrop](https://fondor.dev/api/v1/dots/banner?palette=pastel&w=1500&h=500)
-                    </code>
-                  </div>
-                  <div>
-                    <span className="text-neutral-400 mb-2 block">CSS background-image:</span>
-                    <code className="block p-4 bg-neutral-950 border border-neutral-800 rounded-lg text-emerald-400 font-mono overflow-x-auto">
-                      background-image: url(&apos;https://fondor.dev/api/v1/blob/my-project?palette=dark&w=1920&h=1080&apos;);
-                    </code>
-                  </div>
+                  {EMBED_EXAMPLES.map((example) => (
+                    <div key={example.key}>
+                      <div className="mb-2 flex items-center justify-between gap-3">
+                        <span className="text-neutral-400">{example.label}</span>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => copyEmbed(example.code, example.key)}
+                          className="h-7 bg-neutral-950 border-neutral-800 px-2 text-xs hover:bg-neutral-800 hover:text-white"
+                        >
+                          {copiedEmbed === example.key ? (
+                            <>
+                              <Check className="w-3.5 h-3.5 mr-1 text-green-500" />
+                              <span className="text-green-500">Copied!</span>
+                            </>
+                          ) : (
+                            <>
+                              <Copy className="w-3.5 h-3.5 mr-1" />
+                              Copy
+                            </>
+                          )}
+                        </Button>
+                      </div>
+                      <code className="block p-4 bg-neutral-950 border border-neutral-800 rounded-lg text-emerald-400 font-mono overflow-x-auto">
+                        {example.code}
+                      </code>
+                    </div>
+                  ))}
                 </div>
               </div>
             </CardContent>
@@ -516,5 +667,13 @@ export default function Home() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function Home() {
+  return (
+    <Suspense>
+      <HomeContent />
+    </Suspense>
   );
 }

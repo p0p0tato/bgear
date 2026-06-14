@@ -30,6 +30,9 @@ export const metadata: Metadata = {
   title: "fondor — SVG Backdrops on Demand",
   description: "Free, open-source API for deterministic SVG backgrounds. Seed any string, get a backdrop. Embed anywhere.",
   metadataBase: new URL("https://fondor.dev"),
+  icons: {
+    icon: "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'><circle cx='4' cy='4' r='2.5' fill='white'/><circle cx='12' cy='4' r='2.5' fill='white'/><circle cx='4' cy='12' r='2.5' fill='white'/><circle cx='12' cy='12' r='2.5' fill='white'/></svg>",
+  },
   openGraph: {
     title: "fondor — SVG Backdrops on Demand",
     description: "Free, open-source API for deterministic SVG backgrounds.",
