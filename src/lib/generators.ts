@@ -1,4 +1,4 @@
-import seedrandom from 'seedrandom';
+import seedrandom from "seedrandom";
 
 export type StyleType = "gradient" | "dots" | "geo" | "lines" | "topographic" | "blob" | "noise" | "plain";
 export type PaletteType = "warm" | "cool" | "earth" | "mono" | "neon" | "pastel" | "dark";
@@ -13,6 +13,25 @@ export const PALETTES: Record<PaletteType, string[]> = {
   dark: ["#0B0C10", "#1F2833", "#2C3531", "#116466", "#D9B08C"],
 };
 
+type Point = { x: number; y: number };
+
+const format = (value: number) => Number(value.toFixed(2));
+
+const hexToRgb = (hex: string) => {
+  const clean = hex.replace("#", "");
+  const value = parseInt(clean, 16);
+  return {
+    r: (value >> 16) & 255,
+    g: (value >> 8) & 255,
+    b: value & 255,
+  };
+};
+
+const luminance = (hex: string) => {
+  const { r, g, b } = hexToRgb(hex);
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+};
+
 export function generateSVG(
   style: StyleType,
   seed: string | number,
@@ -20,153 +39,294 @@ export function generateSVG(
   width: number = 800,
   height: number = 600
 ): string {
-  // Initialize deterministic PRNG
   const prng = seedrandom(seed.toString());
-
   const colors = PALETTES[paletteTheme];
-  
-  // Helper for repeatable random colors
   const getRandomColor = () => colors[Math.floor(prng() * colors.length)];
-  const getBackgroundColor = () => colors[0]; // Let first color be standard bg color
-
-  // Random ranges
   const rRange = (min: number, max: number) => prng() * (max - min) + min;
+  const bg = colors[0];
+  const minSide = Math.min(width, height);
+  const maxSide = Math.max(width, height);
+  const sortedByLight = [...colors].sort((a, b) => luminance(a) - luminance(b));
 
   let content = "";
-  const bg = getBackgroundColor();
 
   switch (style) {
-    case "plain":
-      content = `<rect width="100%" height="100%" fill="${bg}" />`;
-      break;
-
-    case "gradient":
-      const color1 = getRandomColor();
-      const color2 = getRandomColor();
-      const angle = Math.floor(rRange(0, 360));
+    case "plain": {
       content = `
         <defs>
-          <linearGradient id="grad1" x1="0%" y1="0%" x2="100%" y2="100%" gradientTransform="rotate(${angle} ${width/2} ${height/2})">
-            <stop offset="0%" style="stop-color:${color1};stop-opacity:1" />
-            <stop offset="100%" style="stop-color:${color2};stop-opacity:1" />
-          </linearGradient>
+          <radialGradient id="vignette" cx="50%" cy="48%" r="72%">
+            <stop offset="0%" stop-color="#000000" stop-opacity="0" />
+            <stop offset="100%" stop-color="#000000" stop-opacity="0.25" />
+          </radialGradient>
         </defs>
-        <rect width="100%" height="100%" fill="url(#grad1)" />
+        <rect width="100%" height="100%" fill="${bg}" />
+        <rect width="100%" height="100%" fill="url(#vignette)" />
       `;
       break;
+    }
 
-    case "dots":
-      content = `<rect width="100%" height="100%" fill="${bg}" />`;
-      const numDots = Math.floor(rRange(30, 80));
-      for (let i = 0; i < numDots; i++) {
+    case "gradient": {
+      const [color1, color2, color3] = [getRandomColor(), getRandomColor(), getRandomColor()];
+      const isRadial = prng() > 0.5;
+      const noiseOpacity = rRange(0.05, 0.1).toFixed(2);
+      const gradientDef = isRadial
+        ? `<radialGradient id="grad1" cx="${format(rRange(25, 75))}%" cy="${format(rRange(25, 75))}%" r="${format(rRange(65, 95))}%" fx="${format(rRange(15, 85))}%" fy="${format(rRange(15, 85))}%">`
+        : `<linearGradient id="grad1" x1="0%" y1="0%" x2="100%" y2="100%" gradientTransform="rotate(${format(rRange(0, 360))} ${format(width / 2)} ${format(height / 2)})">`;
+
+      content = `
+        <defs>
+          ${gradientDef}
+            <stop offset="0%" stop-color="${color1}" />
+            <stop offset="52%" stop-color="${color2}" />
+            <stop offset="100%" stop-color="${color3}" />
+          ${isRadial ? "</radialGradient>" : "</linearGradient>"}
+          <filter id="grain">
+            <feTurbulence type="fractalNoise" baseFrequency="${rRange(0.7, 1.1).toFixed(2)}" numOctaves="2" stitchTiles="stitch" />
+            <feColorMatrix type="saturate" values="0" />
+          </filter>
+        </defs>
+        <rect width="100%" height="100%" fill="url(#grad1)" />
+        <rect width="100%" height="100%" filter="url(#grain)" opacity="${noiseOpacity}" />
+      `;
+      break;
+    }
+
+    case "dots": {
+      const clusterCount = Math.floor(rRange(4, 8));
+      const dotCount = Math.floor(rRange(80, 140));
+
+      content = `
+        <defs>
+          <filter id="softBokeh"><feGaussianBlur stdDeviation="8" /></filter>
+          <filter id="dotGrain">
+            <feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2" stitchTiles="stitch" />
+            <feColorMatrix type="saturate" values="0" />
+          </filter>
+        </defs>
+        <rect width="100%" height="100%" fill="${bg}" />
+      `;
+
+      for (let i = 0; i < clusterCount; i++) {
         const cx = rRange(0, width);
         const cy = rRange(0, height);
-        const r = rRange(5, width * 0.1);
+        const radius = rRange(minSide * 0.08, minSide * 0.22);
         const fill = getRandomColor();
-        const opacity = rRange(0.4, 0.9).toFixed(2);
-        content += `<circle cx="${cx}" cy="${cy}" r="${r}" fill="${fill}" opacity="${opacity}" />`;
+        content += `<circle cx="${format(cx)}" cy="${format(cy)}" r="${format(radius)}" fill="${fill}" opacity="${rRange(0.16, 0.32).toFixed(2)}" filter="url(#softBokeh)" />`;
       }
-      break;
 
-    case "geo":
-      content = `<rect width="100%" height="100%" fill="${bg}" />`;
-      const numShapes = Math.floor(rRange(15, 40));
-      for (let i = 0; i < numShapes; i++) {
-        const type = prng() > 0.5 ? 'rect' : 'polygon';
+      for (let i = 0; i < dotCount; i++) {
+        const clusterX = rRange(0, width);
+        const clusterY = rRange(0, height);
+        const jitter = rRange(minSide * 0.02, minSide * 0.18);
+        const cx = clusterX + rRange(-jitter, jitter);
+        const cy = clusterY + rRange(-jitter, jitter);
+        const r = prng() > 0.82 ? rRange(minSide * 0.025, minSide * 0.07) : rRange(2, Math.max(4, minSide * 0.014));
+        const filter = prng() > 0.82 ? ' filter="url(#softBokeh)"' : "";
+        content += `<circle cx="${format(cx)}" cy="${format(cy)}" r="${format(r)}" fill="${getRandomColor()}" opacity="${rRange(0.35, 0.82).toFixed(2)}"${filter} />`;
+      }
+
+      content += `<rect width="100%" height="100%" filter="url(#dotGrain)" opacity="0.06" />`;
+      break;
+    }
+
+    case "geo": {
+      const shapeCount = Math.floor(rRange(24, 46));
+      const polygonPoints = (cx: number, cy: number, radius: number, sides: number, rotation: number) =>
+        Array.from({ length: sides }, (_, index) => {
+          const angle = rotation + (Math.PI * 2 * index) / sides;
+          return `${format(cx + Math.cos(angle) * radius)},${format(cy + Math.sin(angle) * radius)}`;
+        }).join(" ");
+
+      content = `
+        <defs>
+          <linearGradient id="geoOverlay" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="#ffffff" stop-opacity="0.12" />
+            <stop offset="50%" stop-color="#000000" stop-opacity="0" />
+            <stop offset="100%" stop-color="#000000" stop-opacity="0.24" />
+          </linearGradient>
+          <filter id="geoBlur"><feGaussianBlur stdDeviation="${format(rRange(3, 7))}" /></filter>
+        </defs>
+        <rect width="100%" height="100%" fill="${bg}" />
+      `;
+
+      for (let i = 0; i < shapeCount; i++) {
+        const cx = rRange(-width * 0.08, width * 1.08);
+        const cy = rRange(-height * 0.08, height * 1.08);
+        const size = rRange(minSide * 0.06, minSide * 0.28);
         const color = getRandomColor();
-        const opacity = rRange(0.3, 0.8).toFixed(2);
+        const opacity = rRange(0.24, 0.74).toFixed(2);
+        const rotation = rRange(0, 360);
+        const blur = prng() > 0.76 ? ' filter="url(#geoBlur)"' : "";
+        const kind = Math.floor(rRange(0, 4));
 
-        if (type === 'rect') {
-          const w = rRange(20, 150);
-          const h = rRange(20, 150);
-          const x = rRange(-w, width);
-          const y = rRange(-h, height);
-          const rot = rRange(0, 360);
-          content += `<rect x="${x}" y="${y}" width="${w}" height="${h}" fill="${color}" opacity="${opacity}" transform="rotate(${rot} ${x + w/2} ${y + h/2})" />`;
+        if (kind === 0) {
+          const w = size * rRange(0.7, 1.8);
+          const h = size * rRange(0.45, 1.3);
+          content += `<rect x="${format(cx - w / 2)}" y="${format(cy - h / 2)}" width="${format(w)}" height="${format(h)}" rx="${format(size * 0.06)}" fill="${color}" opacity="${opacity}" transform="rotate(${format(rotation)} ${format(cx)} ${format(cy)})"${blur} />`;
+        } else if (kind === 1) {
+          content += `<polygon points="${polygonPoints(cx, cy, size, 3, rRange(0, Math.PI * 2))}" fill="${color}" opacity="${opacity}" transform="rotate(${format(rotation)} ${format(cx)} ${format(cy)})"${blur} />`;
+        } else if (kind === 2) {
+          content += `<polygon points="${polygonPoints(cx, cy, size, 6, rRange(0, Math.PI * 2))}" fill="${color}" opacity="${opacity}" transform="rotate(${format(rotation)} ${format(cx)} ${format(cy)})"${blur} />`;
         } else {
-          // Triangle
-          const cx = rRange(0, width);
-          const cy = rRange(0, height);
-          const size = rRange(30, 200);
-          const p1 = `${cx},${cy - size}`;
-          const p2 = `${cx - size},${cy + size}`;
-          const p3 = `${cx + size},${cy + size}`;
-          const rot = rRange(0, 360);
-          content += `<polygon points="${p1} ${p2} ${p3}" fill="${color}" opacity="${opacity}" transform="rotate(${rot} ${cx} ${cy})" />`;
+          const points = `${format(cx)},${format(cy - size)} ${format(cx + size * 0.75)},${format(cy)} ${format(cx)},${format(cy + size)} ${format(cx - size * 0.75)},${format(cy)}`;
+          content += `<polygon points="${points}" fill="${color}" opacity="${opacity}" transform="rotate(${format(rotation)} ${format(cx)} ${format(cy)})"${blur} />`;
         }
       }
-      break;
 
-    case "lines":
-      content = `<rect width="100%" height="100%" fill="${bg}" />`;
-      const numLines = Math.floor(rRange(10, 30));
-      for (let i = 0; i < numLines; i++) {
-        const x1 = rRange(-width*0.2, width*1.2);
-        const y1 = rRange(-height*0.2, height*1.2);
-        const x2 = rRange(-width*0.2, width*1.2);
-        const y2 = rRange(-height*0.2, height*1.2);
-        const stroke = getRandomColor();
-        const strokeWidth = rRange(2, 40);
-        content += `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="${stroke}" stroke-width="${strokeWidth}" stroke-linecap="round" opacity="0.8" />`;
-      }
+      content += `<rect width="100%" height="100%" fill="url(#geoOverlay)" />`;
       break;
+    }
 
-    case "topographic":
-      content = `<rect width="100%" height="100%" fill="${bg}" />`;
-      const steps = Math.floor(rRange(8, 15));
-      const lineCol = getRandomColor();
-      for (let i = steps; i > 0; i--) {
-        const scale = i * rRange(0.08, 0.12); // expanding scale
-        // Create an organic path around the center
-        const cx = width / 2;
-        const cy = height / 2;
-        const radius = Math.min(width, height) * scale;
-        
-        // Very basic simple random wavy circle
-        let d = `M ${cx + radius} ${cy} `;
-        for (let angle = 0; angle <= 360; angle += 45) {
-          const rad = angle * (Math.PI / 180);
-          const rVar = radius + (rRange(-0.2, 0.2) * radius);
-          const px = cx + rVar * Math.cos(rad);
-          const py = cy + rVar * Math.sin(rad);
-          d += `Q ${px} ${py} ${cx + rVar * Math.cos(rad + 0.1)} ${cy + rVar * Math.sin(rad + 0.1)} `;
+    case "lines": {
+      const thin = format(rRange(1, 2));
+      const thick = format(rRange(8, 20));
+      const tile = format(rRange(46, 82));
+
+      content = `
+        <defs>
+          <pattern id="stripeA" width="${tile}" height="${tile}" patternUnits="userSpaceOnUse" patternTransform="rotate(${format(rRange(28, 42))})">
+            <rect width="${tile}" height="${tile}" fill="transparent" />
+            <line x1="0" y1="${format(tile * 0.22)}" x2="${tile}" y2="${format(tile * 0.22)}" stroke="${getRandomColor()}" stroke-width="${thin}" opacity="0.72" />
+            <line x1="0" y1="${format(tile * 0.72)}" x2="${tile}" y2="${format(tile * 0.72)}" stroke="${getRandomColor()}" stroke-width="${thick}" opacity="0.42" />
+          </pattern>
+          <pattern id="stripeB" width="${format(tile * 1.4)}" height="${format(tile * 1.4)}" patternUnits="userSpaceOnUse" patternTransform="rotate(${format(rRange(118, 132))})">
+            <line x1="0" y1="${format(tile * 0.3)}" x2="${format(tile * 1.4)}" y2="${format(tile * 0.3)}" stroke="${getRandomColor()}" stroke-width="${format(rRange(1, 2))}" opacity="0.28" />
+            <line x1="0" y1="${format(tile)}" x2="${format(tile * 1.4)}" y2="${format(tile)}" stroke="${getRandomColor()}" stroke-width="${format(rRange(8, 20))}" opacity="0.18" />
+          </pattern>
+        </defs>
+        <rect width="100%" height="100%" fill="${bg}" />
+        <rect width="100%" height="100%" fill="url(#stripeA)" />
+        <rect width="100%" height="100%" fill="url(#stripeB)" />
+      `;
+      break;
+    }
+
+    case "topographic": {
+      const focalX = rRange(width * 0.18, width * 0.82);
+      const focalY = rRange(height * 0.18, height * 0.82);
+      const rings = Math.floor(rRange(6, 13));
+      const dark = sortedByLight[0];
+      const light = sortedByLight[sortedByLight.length - 1];
+
+      const closedPath = (points: Point[]) => {
+        let d = `M ${format(points[0].x)} ${format(points[0].y)}`;
+        for (let i = 0; i < points.length; i++) {
+          const current = points[i];
+          const next = points[(i + 1) % points.length];
+          const angle = Math.atan2(next.y - current.y, next.x - current.x);
+          const distance = Math.hypot(next.x - current.x, next.y - current.y);
+          const controlDistance = distance * rRange(0.28, 0.48);
+          const c1 = {
+            x: current.x + Math.cos(angle) * controlDistance + rRange(-minSide * 0.025, minSide * 0.025),
+            y: current.y + Math.sin(angle) * controlDistance + rRange(-minSide * 0.025, minSide * 0.025),
+          };
+          const c2 = {
+            x: next.x - Math.cos(angle) * controlDistance + rRange(-minSide * 0.025, minSide * 0.025),
+            y: next.y - Math.sin(angle) * controlDistance + rRange(-minSide * 0.025, minSide * 0.025),
+          };
+          d += ` C ${format(c1.x)} ${format(c1.y)}, ${format(c2.x)} ${format(c2.y)}, ${format(next.x)} ${format(next.y)}`;
         }
-        
-        content += `<path d="${d}" fill="none" stroke="${lineCol}" stroke-width="2" opacity="0.6" />`;
-      }
-      break;
+        return `${d} Z`;
+      };
 
-    case "blob":
       content = `<rect width="100%" height="100%" fill="${bg}" />`;
-      const numBlobs = Math.floor(rRange(3, 7));
-      for (let i = 0; i < numBlobs; i++) {
-        const cx = rRange(0, width);
-        const cy = rRange(0, height);
-        const rVar = rRange(width * 0.2, width * 0.5);
-        const fill = getRandomColor();
-        const opacity = rRange(0.6, 0.9).toFixed(2);
-        
-        content += `<path d="M ${cx} ${cy - rVar} C ${cx + rVar} ${cy - rVar}, ${cx + rVar} ${cy + rVar}, ${cx} ${cy + rVar} C ${cx - rVar} ${cy + rVar}, ${cx - rVar} ${cy - rVar}, ${cx} ${cy - rVar} Z" fill="${fill}" opacity="${opacity}" transform="rotate(${rRange(0, 360)} ${cx} ${cy}) scale(${rRange(0.8, 1.2)} ${rRange(0.8, 1.2)})" />`;
+      for (let ring = 1; ring <= rings; ring++) {
+        const progress = ring / rings;
+        const rx = minSide * (0.08 + progress * 0.72) * rRange(0.88, 1.16);
+        const ry = minSide * (0.06 + progress * 0.48) * rRange(0.86, 1.22);
+        const rotation = rRange(0, Math.PI);
+        const points = Array.from({ length: 8 }, (_, index) => {
+          const angle = (Math.PI * 2 * index) / 8;
+          const distortedRx = rx * rRange(0.86, 1.14);
+          const distortedRy = ry * rRange(0.86, 1.14);
+          const x = Math.cos(angle) * distortedRx;
+          const y = Math.sin(angle) * distortedRy;
+          return {
+            x: focalX + x * Math.cos(rotation) - y * Math.sin(rotation),
+            y: focalY + x * Math.sin(rotation) + y * Math.cos(rotation),
+          };
+        });
+        const stroke = progress > 0.5 ? light : dark;
+        content += `<path d="${closedPath(points)}" fill="${getRandomColor()}" fill-opacity="0.05" stroke="${stroke}" stroke-width="${format(rRange(1.2, 2.8))}" opacity="${rRange(0.44, 0.82).toFixed(2)}" />`;
       }
       break;
+    }
 
-    case "noise":
-      const nsBase = getRandomColor();
-      // Use SVG turbulent filter to generate a noise pattern mapped over a rect
+    case "blob": {
+      const blobCount = Math.floor(rRange(3, 6));
+      const organicPath = (cx: number, cy: number, radius: number) => {
+        const pointCount = Math.floor(rRange(5, 9));
+        const points = Array.from({ length: pointCount }, (_, index) => {
+          const angle = (Math.PI * 2 * index) / pointCount + rRange(-0.18, 0.18);
+          const r = radius * rRange(0.62, 1.18);
+          return { x: cx + Math.cos(angle) * r, y: cy + Math.sin(angle) * r, angle };
+        });
+        let d = `M ${format(points[0].x)} ${format(points[0].y)}`;
+        for (let i = 0; i < points.length; i++) {
+          const current = points[i];
+          const next = points[(i + 1) % points.length];
+          const currentHandle = radius * rRange(0.3, 0.9);
+          const nextHandle = radius * rRange(0.3, 0.9);
+          const c1 = {
+            x: current.x + Math.cos(current.angle + Math.PI / 2) * currentHandle,
+            y: current.y + Math.sin(current.angle + Math.PI / 2) * currentHandle,
+          };
+          const c2 = {
+            x: next.x - Math.cos(next.angle + Math.PI / 2) * nextHandle,
+            y: next.y - Math.sin(next.angle + Math.PI / 2) * nextHandle,
+          };
+          d += ` C ${format(c1.x)} ${format(c1.y)}, ${format(c2.x)} ${format(c2.y)}, ${format(next.x)} ${format(next.y)}`;
+        }
+        return `${d} Z`;
+      };
+
+      content = `
+        <defs>
+          <filter id="blobBlur" x="-30%" y="-30%" width="160%" height="160%">
+            <feGaussianBlur stdDeviation="30" />
+          </filter>
+          <radialGradient id="blobShade" cx="50%" cy="45%" r="75%">
+            <stop offset="0%" stop-color="#ffffff" stop-opacity="0.12" />
+            <stop offset="100%" stop-color="#000000" stop-opacity="0.22" />
+          </radialGradient>
+        </defs>
+        <rect width="100%" height="100%" fill="${bg}" />
+      `;
+
+      for (let i = 0; i < blobCount; i++) {
+        const radius = rRange(minSide * 0.18, maxSide * 0.36);
+        const cx = rRange(-width * 0.08, width * 1.08);
+        const cy = rRange(-height * 0.08, height * 1.08);
+        content += `<path d="${organicPath(cx, cy, radius)}" fill="${getRandomColor()}" opacity="${rRange(0.48, 0.78).toFixed(2)}" filter="url(#blobBlur)" />`;
+      }
+
+      content += `<rect width="100%" height="100%" fill="url(#blobShade)" />`;
+      break;
+    }
+
+    case "noise": {
+      const primary = hexToRgb(colors[0]);
+      const redShift = (primary.r / 255 * 0.34).toFixed(3);
+      const greenShift = (primary.g / 255 * 0.34).toFixed(3);
+      const blueShift = (primary.b / 255 * 0.34).toFixed(3);
+
       content = `
         <defs>
           <filter id="noiseFilter">
-            <feTurbulence type="fractalNoise" baseFrequency="${rRange(0.5, 1.5).toFixed(2)}" numOctaves="3" stitchTiles="stitch"/>
-            <feColorMatrix type="matrix" values="1 0 0 0 0, 0 1 0 0 0, 0 0 1 0 0, 0 0 0 0.5 0" />
+            <feTurbulence type="turbulence" baseFrequency="${rRange(0.015, 0.04).toFixed(3)}" numOctaves="4" seed="${Math.floor(rRange(1, 9999))}" stitchTiles="stitch" />
+            <feColorMatrix type="matrix" values="0.55 0.18 0.08 0 ${redShift} 0.10 0.56 0.12 0 ${greenShift} 0.08 0.14 0.58 0 ${blueShift} 0 0 0 1 0" />
           </filter>
         </defs>
-        <rect width="100%" height="100%" fill="${nsBase}" />
-        <rect width="100%" height="100%" style="filter:url(#noiseFilter)" opacity="0.5" />
+        <rect width="100%" height="100%" fill="${sortedByLight[0]}" />
+        <rect width="100%" height="100%" filter="url(#noiseFilter)" opacity="0.92" />
+        <rect width="100%" height="100%" fill="${colors[0]}" opacity="0.4" />
       `;
       break;
+    }
 
-    default:
+    default: {
       content = `<rect width="100%" height="100%" fill="${bg}" />`;
+    }
   }
 
   return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${width} ${height}" width="${width}" height="${height}">${content}</svg>`;

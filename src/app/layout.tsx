@@ -8,16 +8,23 @@ const geistSans = Geist({ variable: "--font-geist-sans", subsets: ["latin"] });
 const geistMono = Geist_Mono({ variable: "--font-geist-mono", subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "bgear.dev — SVG backdrop API",
-  description: "Free open source API for generating deterministic SVG backgrounds. Gradients, dots, geo shapes, topographic and more.",
+  title: "fondor — SVG Backdrops on Demand",
+  description: "Free, open-source API for deterministic SVG backgrounds. Seed any string, get a backdrop. Embed anywhere.",
+  metadataBase: new URL("https://fondor.dev"),
   openGraph: {
-    title: "bgear.dev — SVG backdrop API",
-    description: "Free open source API for generating deterministic SVG backgrounds. Gradients, dots, geo shapes, topographic and more.",
+    title: "fondor — SVG Backdrops on Demand",
+    description: "Free, open-source API for deterministic SVG backgrounds.",
+    url: "https://fondor.dev",
+    siteName: "fondor",
     images: [{
-      url: "/api/v1/gradient/bgear?w=1200&h=630",
-      width: 1200,
-      height: 630,
+      url: "/api/v1/geo/fondor-og?palette=neon&w=1200&h=630",
     }],
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "fondor — SVG Backdrops on Demand",
+    description: "Free, open-source API for deterministic SVG backgrounds.",
+    images: ["/api/v1/geo/fondor-og?palette=neon&w=1200&h=630"],
   },
 };
 
@@ -40,7 +47,7 @@ export default function RootLayout({
       <body className="min-h-full flex flex-col bg-neutral-950 text-neutral-50 selection:bg-neutral-800">
         <header className="flex items-center justify-between px-6 md:px-12 py-4 border-b border-neutral-800 bg-neutral-950/80 backdrop-blur-sm sticky top-0 z-50">
           <div className="font-bold text-xl tracking-tight text-white hover:opacity-80 transition-opacity cursor-pointer">
-            bgear.dev
+            fondor.dev
           </div>
           <a
             href="https://github.com"
@@ -60,7 +67,7 @@ export default function RootLayout({
         </main>
 
         <footer className="w-full px-6 py-8 text-center text-sm text-neutral-500 border-t border-neutral-900 bg-neutral-950">
-          MIT License &middot; Open Source
+          Built with Next.js, shadcn/ui, and seedrandom. Deterministic SVG backdrops on the edge.
         </footer>
       </body>
     </html>
