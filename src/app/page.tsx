@@ -45,11 +45,55 @@ const ASPECT_RATIOS = [
   { label: "Portrait", w: 800, h: 1000 },
 ];
 
-const SHOWCASE_IMAGES = [
-  { src: "/api/v1/geo/fondor-one?palette=neon&w=600&h=400", alt: "Neon geometric fondor backdrop" },
-  { src: "/api/v1/blob/fondor-two?palette=cool&w=600&h=400", alt: "Cool blob fondor backdrop" },
-  { src: "/api/v1/topographic/fondor-three?palette=earth&w=600&h=400", alt: "Earth topographic fondor backdrop" },
-  { src: "/api/v1/noise/fondor-four?palette=dark&w=600&h=400", alt: "Dark noise fondor backdrop" },
+const githubUrl = "https://github.com/p0p0tato/bgear";
+
+const HERO_CHIPS = [
+  { src: "/api/v1/geo/chip-one?palette=neon&w=320&h=180", label: "geo / neon" },
+  { src: "/api/v1/blob/chip-two?palette=cool&w=320&h=180", label: "blob / cool" },
+  { src: "/api/v1/topographic/chip-three?palette=earth&w=320&h=180", label: "topo / earth" },
+  { src: "/api/v1/noise/chip-four?palette=dark&w=320&h=180", label: "noise / dark" },
+  { src: "/api/v1/gradient/chip-five?palette=pastel&w=320&h=180", label: "gradient / pastel" },
+];
+
+const USE_CASES = [
+  {
+    src: "/api/v1/gradient/uc-readme?palette=cool&w=800&h=160",
+    title: "GitHub README banners",
+    description: "Add a polished header to any open-source repo. Seed it with your project name for a consistent look.",
+  },
+  {
+    src: "/api/v1/geo/uc-og?palette=neon&w=800&h=160",
+    title: "OG & social images",
+    description: "Generate unique open graph images per page. Pass the post slug as a seed — same slug, same backdrop, every time.",
+  },
+  {
+    src: "/api/v1/blob/uc-cover?palette=dark&w=800&h=160",
+    title: "Notion & doc covers",
+    description: "Drop a backdrop URL into any tool that accepts image URLs. Works with Notion, Linear, Coda, and more.",
+  },
+  {
+    src: "/api/v1/topographic/uc-banner?palette=earth&w=800&h=160",
+    title: "Twitter / X banners",
+    description: "Pick a style and seed, copy the URL, paste it as your banner image. No design tool needed.",
+  },
+  {
+    src: "/api/v1/noise/uc-app?palette=warm&w=800&h=160",
+    title: "App loading screens",
+    description: "Use a seeded backdrop as a placeholder while your app loads. Deterministic means it never flickers.",
+  },
+  {
+    src: "/api/v1/dots/uc-email?palette=pastel&w=800&h=160",
+    title: "Email headers",
+    description: "Embed a backdrop as a full-width header image in HTML emails. Lightweight SVG keeps file sizes tiny.",
+  },
+];
+
+const SOCIAL_PROOF_ITEMS = [
+  "Free forever",
+  "No API key required",
+  "Deterministic output",
+  "MIT licensed",
+  "Edge-ready",
 ];
 
 const createLocalPreviewUrl = (s: string, p: string, sd: string, w: number, h: number) =>
@@ -88,6 +132,8 @@ export default function Home() {
     activeSettings.width,
     activeSettings.height
   );
+  const previewRatio = activeSettings.width / activeSettings.height;
+  const previewMaxHeight = 500;
 
   const applySettings = (nextSeed = seed) => {
     setActiveSettings({ style, palette, seed: nextSeed, width, height });
@@ -129,30 +175,85 @@ export default function Home() {
   };
 
   return (
-    <div className="min-h-screen bg-neutral-950 text-neutral-50 p-6 md:p-12 font-sans selection:bg-neutral-800">
-      <div className="max-w-6xl mx-auto space-y-12">
-        <section className="space-y-8 pb-4">
-          <div className="space-y-4">
-            <h1 className="text-5xl md:text-6xl font-bold tracking-tight text-white">
-              Backdrops on demand.
-            </h1>
-            <p className="text-neutral-400 text-xl max-w-3xl">
-              fondor is a free, open-source API for deterministic, infinitely scalable SVG backgrounds — seeded by any string, ready to embed anywhere.
-            </p>
+    <div className="min-h-screen bg-neutral-950 text-neutral-50 font-sans selection:bg-neutral-800">
+      <section className="relative min-h-screen overflow-hidden flex items-center justify-center">
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src="/api/v1/blob/fondor-hero?palette=dark&w=1920&h=1080"
+          alt=""
+          className="absolute inset-0 z-0 h-full w-full object-cover opacity-40"
+        />
+        <div
+          aria-hidden="true"
+          className="absolute inset-0 z-[1]"
+          style={{ background: "radial-gradient(ellipse at center, transparent 0%, #0a0a0a 70%)" }}
+        />
+        <div className="relative z-[2] mx-auto max-w-[800px] px-6 text-center">
+          <h1 className="text-5xl md:text-7xl font-bold tracking-tight text-white">
+            Pick a seed. Get a backdrop.
+          </h1>
+          <p className="text-neutral-400 text-lg md:text-xl mt-6 max-w-2xl mx-auto">
+            fondor generates deterministic, infinitely scalable SVG backgrounds from any string. Free, open-source, and ready to embed anywhere.
+          </p>
+          <div className="mt-10 flex gap-4 justify-center flex-wrap">
+            <a
+              href="#playground"
+              className="inline-flex h-10 items-center justify-center rounded-full bg-white px-5 text-sm font-medium text-black transition-colors hover:bg-neutral-200"
+            >
+              Try the Playground
+            </a>
+            <a
+              href={githubUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-flex h-10 items-center justify-center rounded-full border border-neutral-700 bg-neutral-950/40 px-5 text-sm font-medium text-neutral-200 transition-colors hover:border-neutral-500 hover:bg-neutral-900/80 hover:text-white"
+            >
+              View on GitHub
+            </a>
           </div>
-
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            {SHOWCASE_IMAGES.map((image) => (
-              <div key={image.src} className="rounded-lg overflow-hidden border border-neutral-800 bg-neutral-900 aspect-[3/2]">
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img src={image.src} alt={image.alt} className="w-full h-full object-cover" />
+          <div className="mt-16 flex gap-3 justify-center flex-wrap">
+            {HERO_CHIPS.map((chip) => (
+              <div key={chip.src} className="space-y-2">
+                <div className="h-[90px] w-[160px] overflow-hidden rounded-lg border border-neutral-800 bg-neutral-900">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={chip.src} alt="" className="h-full w-full object-cover" />
+                </div>
+                <div className="text-xs text-neutral-500">{chip.label}</div>
               </div>
             ))}
           </div>
-        </section>
+        </div>
+      </section>
 
-        <section className="space-y-6">
-          <Card className="bg-neutral-900 border-neutral-800 text-white overflow-hidden">
+      <div className="px-6 md:px-12 py-16 md:py-20">
+        <div className="max-w-6xl mx-auto space-y-16">
+          <section id="use-cases" className="space-y-8 scroll-mt-24">
+            <div className="space-y-2">
+              <h2 className="text-3xl font-semibold text-white">Where fondor fits</h2>
+              <p className="text-neutral-400">Any place you need a background, fondor works out of the box.</p>
+            </div>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {USE_CASES.map((useCase) => (
+                <article key={useCase.title} className="bg-neutral-900 border border-neutral-800 rounded-xl overflow-hidden">
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img src={useCase.src} alt="" className="h-40 w-full object-cover" />
+                  <div className="p-5">
+                    <h3 className="text-white font-medium text-sm">{useCase.title}</h3>
+                    <p className="text-neutral-400 text-sm mt-1">{useCase.description}</p>
+                  </div>
+                </article>
+              ))}
+            </div>
+          </section>
+
+          <div className="flex flex-wrap justify-center gap-x-8 gap-y-2 text-sm text-neutral-500 py-8 border-y border-neutral-800">
+            {SOCIAL_PROOF_ITEMS.map((item) => (
+              <span key={item}>{item}</span>
+            ))}
+          </div>
+
+          <section id="playground" className="space-y-6 scroll-mt-24">
+            <Card className="bg-neutral-900 border-neutral-800 text-white overflow-hidden">
             <CardHeader className="border-b border-neutral-800 pb-4">
               <CardTitle>Playground</CardTitle>
               <CardDescription className="text-neutral-400">
@@ -160,16 +261,21 @@ export default function Home() {
               </CardDescription>
             </CardHeader>
             <CardContent className="pt-6 space-y-8">
-              <div
-                className="w-full bg-neutral-950 rounded-lg overflow-hidden border border-neutral-800 flex items-center justify-center min-h-[200px]"
-                style={{ aspectRatio: `${activeSettings.width}/${activeSettings.height}`, maxHeight: "500px" }}
-              >
-                {/* eslint-disable-next-line @next/next/no-img-element */}
-                <img
-                  src={localPreviewUrl}
-                  alt="Generated SVG preview"
-                  className="w-full h-full object-cover"
-                />
+              <div className="w-full bg-neutral-950 rounded-lg overflow-hidden border border-neutral-800 flex items-center justify-center p-3">
+                <div
+                  className="overflow-hidden rounded-md border border-neutral-800 bg-neutral-950"
+                  style={{
+                    aspectRatio: `${activeSettings.width}/${activeSettings.height}`,
+                    width: `min(100%, ${Math.round(previewMaxHeight * previewRatio)}px)`,
+                  }}
+                >
+                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                  <img
+                    src={localPreviewUrl}
+                    alt="Generated SVG preview"
+                    className="w-full h-full object-cover"
+                  />
+                </div>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -314,7 +420,7 @@ export default function Home() {
           </Card>
         </section>
 
-        <section className="space-y-6 pt-6">
+          <section id="docs" className="space-y-6 pt-6 scroll-mt-24">
           <div className="space-y-2">
             <h2 className="text-2xl font-semibold text-white">Documentation</h2>
             <p className="text-neutral-400">Everything you need to integrate fondor into your applications.</p>
@@ -406,11 +512,8 @@ export default function Home() {
               </div>
             </CardContent>
           </Card>
-        </section>
-
-        <footer className="pt-12 pb-6 text-center text-neutral-500 text-sm">
-          fondor.dev — open source SVG backdrops. Built by @opeships.
-        </footer>
+          </section>
+        </div>
       </div>
     </div>
   );
