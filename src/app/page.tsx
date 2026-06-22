@@ -1,6 +1,6 @@
 "use client";
 
-import { Suspense, useCallback, useEffect, useState } from "react";
+import { Suspense, useCallback, useEffect, useMemo, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -118,11 +118,55 @@ const EMBED_EXAMPLES = [
   },
 ];
 
-const createLocalPreviewUrl = (s: string, p: string, sd: string, w: number, h: number) =>
-  `/api/v1/${s}/${sd || "default"}?palette=${p}&w=${w}&h=${h}`;
+type OptionKey = "spacing" | "size" | "density" | "amplitude" | "lineCount" | "strokeWidth";
+type PlaygroundOptions = Partial<Record<OptionKey, number>>;
+type StyleControl = {
+  key: OptionKey;
+  label: string;
+  value: number;
+  setter: (value: number) => void;
+};
 
-const createPublicPreviewUrl = (s: string, p: string, sd: string, w: number, h: number) =>
-  `https://fondor.dev/api/v1/${s}/${sd || "default"}?palette=${p}&w=${w}&h=${h}`;
+const STYLE_OPTION_KEYS: Record<string, OptionKey[]> = {
+  dots: ["spacing", "size"],
+  lines: ["lineCount", "amplitude", "strokeWidth"],
+  geo: ["density", "size"],
+  gradient: ["size"],
+  blob: ["density", "size"],
+  topographic: ["lineCount", "amplitude"],
+  noise: ["size"],
+  plain: [],
+};
+
+const filterOptionsForStyle = (styleName: string, opts: PlaygroundOptions) => {
+  const allowedKeys = new Set(STYLE_OPTION_KEYS[styleName] || []);
+  return Object.fromEntries(
+    Object.entries(opts).filter(([key]) => allowedKeys.has(key as OptionKey))
+  ) as PlaygroundOptions;
+};
+
+const createPreviewParams = (p: string, w: number, h: number, opts: PlaygroundOptions = {}) =>
+  new URLSearchParams({
+    palette: p,
+    w: String(w),
+    h: String(h),
+    ...Object.fromEntries(Object.entries(opts).map(([key, value]) => [key, String(value)])),
+  });
+
+const createLocalPreviewUrl = (s: string, p: string, sd: string, w: number, h: number, opts: PlaygroundOptions = {}) =>
+  `/api/v1/${s}/${sd || "default"}?${createPreviewParams(p, w, h, opts).toString()}`;
+
+const createPublicPreviewUrl = (s: string, p: string, sd: string, w: number, h: number, opts: PlaygroundOptions = {}) =>
+  `https://fondor.dev/api/v1/${s}/${sd || "default"}?${createPreviewParams(p, w, h, opts).toString()}`;
+
+type PlaygroundSettings = {
+  style: string;
+  palette: string;
+  seed: string;
+  width: number;
+  height: number;
+  opts: PlaygroundOptions;
+};
 
 const copyText = async (text: string) => {
   if (navigator.clipboard) {
@@ -153,17 +197,36 @@ function HomeContent() {
   const initialSeed = searchParams.get("seed") || "fondor";
   const initialWidth = Number(searchParams.get("w")) || 1500;
   const initialHeight = Number(searchParams.get("h")) || 500;
+  const queryNumber = (key: OptionKey, fallback: number) => Number(searchParams.get(key)) || fallback;
   const [style, setStyle] = useState(initialStyle);
   const [palette, setPalette] = useState(initialPalette);
   const [seed, setSeed] = useState(initialSeed);
   const [width, setWidth] = useState(initialWidth);
   const [height, setHeight] = useState(initialHeight);
-  const [activeSettings, setActiveSettings] = useState({
+  const [optSpacing, setOptSpacing] = useState(queryNumber("spacing", 50));
+  const [optSize, setOptSize] = useState(queryNumber("size", 50));
+  const [optDensity, setOptDensity] = useState(queryNumber("density", 50));
+  const [optAmplitude, setOptAmplitude] = useState(queryNumber("amplitude", 50));
+  const [optLineCount, setOptLineCount] = useState(queryNumber("lineCount", 50));
+  const [optStrokeWidth, setOptStrokeWidth] = useState(queryNumber("strokeWidth", 30));
+  const initialOptions: PlaygroundOptions = {
+    ...(searchParams.has("spacing") ? { spacing: queryNumber("spacing", 50) } : {}),
+    ...(searchParams.has("size") ? { size: queryNumber("size", 50) } : {}),
+    ...(searchParams.has("density") ? { density: queryNumber("density", 50) } : {}),
+    ...(searchParams.has("amplitude") ? { amplitude: queryNumber("amplitude", 50) } : {}),
+    ...(searchParams.has("lineCount") ? { lineCount: queryNumber("lineCount", 50) } : {}),
+    ...(searchParams.has("strokeWidth") ? { strokeWidth: queryNumber("strokeWidth", 30) } : {}),
+  };
+  const [appliedOptions, setAppliedOptions] = useState<PlaygroundOptions>(
+    filterOptionsForStyle(initialStyle, initialOptions)
+  );
+  const [activeSettings, setActiveSettings] = useState<PlaygroundSettings>({
     style: initialStyle,
     palette: initialPalette,
     seed: initialSeed,
     width: initialWidth,
     height: initialHeight,
+    opts: filterOptionsForStyle(initialStyle, initialOptions),
   });
   const [isCopied, setIsCopied] = useState(false);
   const [copiedEmbed, setCopiedEmbed] = useState<string | null>(null);
@@ -174,32 +237,82 @@ function HomeContent() {
     activeSettings.palette,
     activeSettings.seed,
     activeSettings.width,
-    activeSettings.height
+    activeSettings.height,
+    activeSettings.opts
   );
   const publicPreviewUrl = createPublicPreviewUrl(
     activeSettings.style,
     activeSettings.palette,
     activeSettings.seed,
     activeSettings.width,
-    activeSettings.height
+    activeSettings.height,
+    activeSettings.opts
   );
   const previewRatio = activeSettings.width / activeSettings.height;
   const previewMaxHeight = 500;
+  const styleControls = useMemo<Record<string, StyleControl[]>>(() => ({
+    dots: [
+      { key: "spacing", label: "Spacing", value: optSpacing, setter: setOptSpacing },
+      { key: "size", label: "Dot Size", value: optSize, setter: setOptSize },
+    ],
+    lines: [
+      { key: "lineCount", label: "Line Count", value: optLineCount, setter: setOptLineCount },
+      { key: "amplitude", label: "Wave Amount", value: optAmplitude, setter: setOptAmplitude },
+      { key: "strokeWidth", label: "Stroke Width", value: optStrokeWidth, setter: setOptStrokeWidth },
+    ],
+    geo: [
+      { key: "density", label: "Density", value: optDensity, setter: setOptDensity },
+      { key: "size", label: "Shape Size", value: optSize, setter: setOptSize },
+    ],
+    gradient: [
+      { key: "size", label: "Spread", value: optSize, setter: setOptSize },
+    ],
+    blob: [
+      { key: "density", label: "Blob Count", value: optDensity, setter: setOptDensity },
+      { key: "size", label: "Blob Size", value: optSize, setter: setOptSize },
+    ],
+    topographic: [
+      { key: "lineCount", label: "Contour Lines", value: optLineCount, setter: setOptLineCount },
+      { key: "amplitude", label: "Distortion", value: optAmplitude, setter: setOptAmplitude },
+    ],
+    noise: [
+      { key: "size", label: "Grain Size", value: optSize, setter: setOptSize },
+    ],
+    plain: [],
+  }), [optSpacing, optSize, optDensity, optAmplitude, optLineCount, optStrokeWidth]);
 
-  const handleGenerate = useCallback(
-    (nextSeed = seed) => {
-      const nextSettings = { style, palette, seed: nextSeed, width, height };
-      setActiveSettings(nextSettings);
+  const getCurrentOptions = useCallback(() => {
+    const opts: PlaygroundOptions = {};
+    for (const control of styleControls[style] || []) {
+      opts[control.key] = control.value;
+    }
+    return opts;
+  }, [style, styleControls]);
+
+  const syncUrl = useCallback(
+    (settings: PlaygroundSettings) => {
       const params = new URLSearchParams({
-        style,
-        palette,
-        seed: nextSeed,
-        w: String(width),
-        h: String(height),
+        style: settings.style,
+        palette: settings.palette,
+        seed: settings.seed,
+        w: String(settings.width),
+        h: String(settings.height),
+        ...Object.fromEntries(Object.entries(settings.opts).map(([key, value]) => [key, String(value)])),
       });
       router.replace(`?${params.toString()}`, { scroll: false });
     },
-    [style, palette, seed, width, height, router]
+    [router]
+  );
+
+  const handleGenerate = useCallback(
+    (nextSeed = seed) => {
+      const opts = getCurrentOptions();
+      const nextSettings = { style, palette, seed: nextSeed, width, height, opts };
+      setAppliedOptions(opts);
+      setActiveSettings(nextSettings);
+      syncUrl(nextSettings);
+    },
+    [style, palette, seed, width, height, getCurrentOptions, syncUrl]
   );
 
   const handleShuffle = () => {
@@ -219,6 +332,22 @@ function HomeContent() {
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
   }, [handleGenerate]);
+
+  useEffect(() => {
+    const opts = filterOptionsForStyle(style, appliedOptions);
+    const nextSettings = {
+      style,
+      palette,
+      seed,
+      width: Math.max(1, Number.isFinite(width) ? width : 1500),
+      height: Math.max(1, Number.isFinite(height) ? height : 500),
+      opts,
+    };
+
+    setActiveSettings(nextSettings);
+    const timeout = window.setTimeout(() => syncUrl(nextSettings), 250);
+    return () => window.clearTimeout(timeout);
+  }, [style, palette, seed, width, height, appliedOptions, syncUrl]);
 
   const copyToClipboard = async (text: string) => {
     try {
@@ -345,7 +474,7 @@ function HomeContent() {
                 Preview your generated SVG backdrop in real-time.
               </CardDescription>
             </CardHeader>
-            <CardContent className="pt-6 space-y-8">
+            <CardContent className="pt-6 space-y-4">
               <div className="w-full bg-neutral-950 rounded-lg overflow-hidden border border-neutral-800 flex items-center justify-center p-3">
                 <div
                   className="overflow-hidden rounded-md border border-neutral-800 bg-neutral-950"
@@ -363,9 +492,9 @@ function HomeContent() {
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-[1.25fr_1fr_1fr_auto] gap-4">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
                 <div className="space-y-2">
-                  <label className="text-sm font-medium text-neutral-300">Style</label>
+                  <label className="text-xs font-medium text-neutral-400 uppercase tracking-wider">Style</label>
                   <div className="grid grid-cols-4 gap-1.5">
                     {STYLES.map((s) => (
                       <button
@@ -387,7 +516,7 @@ function HomeContent() {
                           className="w-full aspect-[3/2] object-cover"
                           loading="lazy"
                         />
-                        <span className="absolute bottom-0 inset-x-0 bg-black/60 py-0.5 text-center font-mono text-[9px] text-neutral-300">
+                        <span className="absolute bottom-0 inset-x-0 bg-black/60 py-0.5 text-center font-mono text-[9px] text-neutral-300 leading-tight">
                           {s}
                         </span>
                       </button>
@@ -396,14 +525,14 @@ function HomeContent() {
                 </div>
 
                 <div className="space-y-2">
-                  <label className="text-sm font-medium text-neutral-300">Palette</label>
-                  <div className="grid grid-cols-1 gap-1.5">
+                  <label className="text-xs font-medium text-neutral-400 uppercase tracking-wider">Palette</label>
+                  <div className="grid grid-cols-2 gap-1.5">
                     {PALETTES.map((p) => (
                       <button
                         key={p}
                         type="button"
                         onClick={() => setPalette(p)}
-                        className={`flex items-center gap-3 rounded-md border px-3 py-2 text-left transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white ${
+                        className={`flex items-center gap-2 rounded-lg border px-2.5 py-2 text-left transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white ${
                           palette === p
                             ? "border-white bg-neutral-800"
                             : "border-neutral-800 hover:border-neutral-600 hover:bg-neutral-900"
@@ -414,61 +543,98 @@ function HomeContent() {
                           {(PALETTE_COLORS[p] || []).map((color) => (
                             <span
                               key={color}
-                              className="h-3 w-3 rounded-sm"
+                              className="h-2.5 w-2.5 rounded-full"
                               style={{ backgroundColor: color }}
                               aria-hidden="true"
                             />
                           ))}
                         </div>
-                        <span className="font-mono text-sm text-neutral-300">{p}</span>
+                        <span className="truncate font-mono text-xs text-neutral-300">{p}</span>
                       </button>
                     ))}
                   </div>
                 </div>
+              </div>
 
+              {(styleControls[style] || []).length > 0 && (
                 <div className="space-y-2">
-                  <label className="text-sm font-medium text-neutral-300">Seed</label>
-                  <div className="flex gap-2">
+                  <label className="text-xs font-medium text-neutral-400 uppercase tracking-wider">
+                    {style} options
+                  </label>
+                  <div className="flex flex-wrap gap-4">
+                    {(styleControls[style] || []).map((control) => (
+                      <div key={control.key} className="flex-1 min-w-[120px] space-y-1.5">
+                        <div className="flex items-center justify-between">
+                          <span className="text-xs text-neutral-400">{control.label}</span>
+                          <span className="w-8 text-right font-mono text-xs text-neutral-500">{control.value}</span>
+                        </div>
+                        <input
+                          type="range"
+                          min={1}
+                          max={100}
+                          value={control.value}
+                          onChange={(event) => control.setter(Number(event.target.value))}
+                          className="w-full h-1 bg-neutral-800 rounded-full appearance-none cursor-pointer accent-white"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              <div className="flex flex-wrap gap-3 items-end">
+                <div className="space-y-1.5 flex-1 min-w-[160px]">
+                  <label className="text-xs font-medium text-neutral-400 uppercase tracking-wider">Seed</label>
+                  <div className="flex gap-1.5">
                     <Input
                       value={seed}
                       onChange={(event) => setSeed(event.target.value)}
-                      className="bg-neutral-950 border-neutral-800"
-                      placeholder="Enter a seed"
+                      onKeyDown={(event) => {
+                        if (event.key === "Enter") {
+                          handleGenerate();
+                        }
+                      }}
+                      className="bg-neutral-950 border-neutral-800 text-sm h-9"
+                      placeholder="any string"
                     />
                     <Button
                       variant="outline"
                       size="icon"
                       onClick={handleShuffle}
-                      className="bg-neutral-950 border-neutral-800 hover:bg-neutral-800 hover:text-white shrink-0"
+                      className="bg-neutral-950 border-neutral-800 hover:bg-neutral-800 hover:text-white shrink-0 h-9 w-9"
+                      title="Random seed"
                     >
-                      <Shuffle className="w-4 h-4" />
+                      <Shuffle className="w-3.5 h-3.5" />
                     </Button>
                   </div>
                 </div>
 
-                <div className="flex flex-col gap-2 lg:pt-7">
-                  <Button onClick={() => handleGenerate()} className="w-full bg-white text-black hover:bg-neutral-200">
-                    <RefreshCw className="w-4 h-4 mr-2" />
-                    Generate
-                    <kbd className="ml-auto hidden rounded bg-neutral-200 px-1.5 py-0.5 font-mono text-[10px] text-neutral-500 lg:inline">
-                      ⌘↵
-                    </kbd>
-                  </Button>
-                  <Button
-                    variant="outline"
-                    onClick={downloadSvg}
-                    disabled={isDownloading}
-                    className="w-full bg-neutral-950 border-neutral-800 hover:bg-neutral-800 hover:text-white"
-                  >
-                    <Download className="w-4 h-4 mr-2" />
-                    Download SVG
-                  </Button>
+                <div className="space-y-1.5">
+                  <label className="text-xs font-medium text-neutral-400 uppercase tracking-wider">Size</label>
+                  <div className="flex items-center gap-1.5">
+                    <Input
+                      type="number"
+                      min={1}
+                      value={width}
+                      onChange={(event) => setWidth(Number(event.target.value))}
+                      className="bg-neutral-950 border-neutral-800 text-sm h-9 w-20 text-center"
+                      placeholder="1500"
+                    />
+                    <span className="text-neutral-600 text-sm">x</span>
+                    <Input
+                      type="number"
+                      min={1}
+                      value={height}
+                      onChange={(event) => setHeight(Number(event.target.value))}
+                      className="bg-neutral-950 border-neutral-800 text-sm h-9 w-20 text-center"
+                      placeholder="500"
+                    />
+                  </div>
                 </div>
-              </div>
 
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-neutral-300">Presets</label>
-                <div className="flex flex-wrap gap-2">
+                <div className="space-y-1.5">
+                  <label className="text-xs font-medium text-neutral-400 uppercase tracking-wider">Preset</label>
+                  <div className="flex gap-1.5 flex-wrap">
                   {ASPECT_RATIOS.map((ratio) => {
                     const isActive = width === ratio.w && height === ratio.h;
                     return (
@@ -480,46 +646,45 @@ function HomeContent() {
                           setWidth(ratio.w);
                           setHeight(ratio.h);
                         }}
-                        className={isActive ? "bg-white text-black hover:bg-neutral-200" : "bg-neutral-950 border-neutral-800 text-neutral-300 hover:bg-neutral-800 hover:text-white"}
+                        className={`h-9 text-xs ${
+                          isActive
+                            ? "bg-white text-black border-white hover:bg-neutral-200"
+                            : "bg-neutral-950 border-neutral-800 text-neutral-400 hover:bg-neutral-800 hover:text-white"
+                        }`}
                       >
-                        {ratio.label} ({ratio.w}x{ratio.h})
+                        {ratio.label}
                       </Button>
                     );
                   })}
+                  </div>
+                </div>
+
+                <div className="flex gap-1.5 shrink-0">
+                  <Button
+                    onClick={() => handleGenerate()}
+                    className="bg-white text-black hover:bg-neutral-200 h-9 px-4 text-sm font-medium"
+                  >
+                    <RefreshCw className="w-3.5 h-3.5 mr-1.5" />
+                    Generate
+                    <kbd className="ml-2 hidden rounded bg-neutral-200 px-1 py-0.5 font-mono text-[10px] text-neutral-500 lg:inline">
+                      ⌘↵
+                    </kbd>
+                  </Button>
+                  <Button
+                    variant="outline"
+                    onClick={downloadSvg}
+                    disabled={isDownloading}
+                    className="bg-neutral-950 border-neutral-800 hover:bg-neutral-800 hover:text-white h-9 px-3 text-sm"
+                  >
+                    <Download className="w-3.5 h-3.5 mr-1.5" />
+                    Download
+                  </Button>
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-[1fr_1fr_auto] gap-3 items-end">
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-neutral-300">W</label>
-                  <Input
-                    type="number"
-                    min={1}
-                    value={width}
-                    onChange={(event) => setWidth(Number(event.target.value))}
-                    className="bg-neutral-950 border-neutral-800"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <label className="text-sm font-medium text-neutral-300">H</label>
-                  <Input
-                    type="number"
-                    min={1}
-                    value={height}
-                    onChange={(event) => setHeight(Number(event.target.value))}
-                    className="bg-neutral-950 border-neutral-800"
-                  />
-                </div>
-                <Button
-                  variant="outline"
-                  onClick={() => handleGenerate()}
-                  className="bg-neutral-950 border-neutral-800 hover:bg-neutral-800 hover:text-white"
-                >
-                  Apply
-                </Button>
-              </div>
+              <div className="h-px bg-neutral-800 my-2" />
 
-              <div className="space-y-2 pt-4 border-t border-neutral-800">
+              <div className="space-y-2 mt-2">
                 <label className="text-sm font-medium text-neutral-300">API URL</label>
                 <div className="flex gap-2 isolate">
                   <code className="flex-1 px-4 py-2 bg-neutral-950 border border-neutral-800 rounded-md text-sm text-neutral-300 overflow-x-auto whitespace-nowrap">

@@ -51,12 +51,29 @@ export async function GET(
       palette = "warm";
     }
 
+    const optionFromQuery = (key: string) => {
+      const rawValue = searchParams.get(key);
+      if (rawValue === null) return undefined;
+      const parsedValue = Number(rawValue);
+      return Number.isFinite(parsedValue) ? parsedValue : undefined;
+    };
+
+    const options = {
+      spacing: optionFromQuery("spacing"),
+      size: optionFromQuery("size"),
+      density: optionFromQuery("density"),
+      amplitude: optionFromQuery("amplitude"),
+      lineCount: optionFromQuery("lineCount"),
+      strokeWidth: optionFromQuery("strokeWidth"),
+    };
+
     const svgString = generateSVG(
       style as StyleType,
       seed,
       palette as PaletteType,
       w,
-      h
+      h,
+      options
     );
 
     return new NextResponse(svgString, {
